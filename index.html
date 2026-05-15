@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Consultor de Custos - Construção - Família Góes</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; }
+    .bottom-sheet { animation: slideUp 0.4s cubic-bezier(0.32, 0.72, 0, 1) forwards; }
+    @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+    @keyframes slideInRight { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: translateX(0); } }
+    @keyframes slideInLeft { from { opacity: 0; transform: translateX(-40px); } to { opacity: 1; transform: translateX(0); } }
+    .anim-slide-in { animation: slideInRight 0.3s ease-out forwards; }
+    .anim-slide-back { animation: slideInLeft 0.3s ease-out forwards; }
+  </style>
+</head>
+<body class="bg-zinc-950 text-zinc-100 min-h-screen overflow-x-hidden">
+
+  <!-- PROFILE SELECT -->
+  <div id="profileScreen" class="min-h-screen flex items-center justify-center p-4">
+    <div class="w-full max-w-md">
+      <div class="text-center mb-10">
+        <div class="w-28 h-28 mx-auto bg-amber-600 rounded-3xl flex items-center justify-center text-6xl mb-4">🏗️</div>
+        <h1 class="text-3xl font-bold mb-1">Consultor de Custos</h1>
+        <h2 class="text-xl text-zinc-300 mb-1">Construção</h2>
+        <p class="text-emerald-400 font-medium">Família Góes</p>
+      </div>
+      <div id="profilesList" class="space-y-3"></div>
+    </div>
+  </div>
+
+  <!-- MAIN APP -->
+  <div id="mainApp" class="hidden">
+    <header class="fixed top-0 w-full bg-black p-4 border-b border-zinc-800 z-50">
+      <div class="flex justify-between items-center max-w-lg mx-auto">
+        <div class="flex items-center gap-3">
+          <button onclick="switchProfile()" class="text-2xl text-zinc-400 p-2 -ml-2 rounded-full hover:bg-zinc-800 active:bg-zinc-700 transition">
+            <i class="fas fa-chevron-left"></i>
+          </button>
+          <span class="text-3xl">🏗️</span>
+          <div>
+            <h1 class="font-bold text-base">Consultor de Custos</h1>
+            <p id="currentName" class="text-emerald-400 text-sm"></p>
+          </div>
+        </div>
+        <div class="flex items-center gap-3">
+          <span id="status" class="text-xs px-3 py-1 rounded-full">Carregando...</span>
+        </div>
+      </div>
+    </header>
+
+    <main class="pt-20 px-4 max-w-lg mx-auto">
+      <div class="text-center py-8">
+        <p class="text-zinc-400">TOTAL INVESTIDO</p>
+        <p id="totalGasto" class="text-6xl font-bold text-red-400">R$ 0</p>
+      </div>
+
+      <div class="bg-zinc-900 rounded-3xl p-6 mb-8 h-64 flex items-center justify-center">
+        <canvas id="pieChart"></canvas>
+      </div>
+
+      <button onclick="novoCusto()" class="w-full py-5 bg-blue-600 rounded-3xl font-bold mb-8 flex items-center justify-center gap-2 text-lg transition active:scale-95">
+        <i class="fas fa-plus"></i> Novo Lançamento
+      </button>
+
+      <h2 class="font-semibold mb-4">Últimos Lançamentos</h2>
+      <div id="ultimos" class="space-y-4"></div>
+    </main>
+  </div>
+
+  <!-- MODAL -->
+  <div id="modal" class="fixed inset-0 bg-black/80 hidden flex items-end z-50">
+    <div class="bg-zinc-900 w-full rounded-t-3xl bottom-sheet max-w-lg mx-auto">
+      <div class="p-5 border-b flex justify-between">
+        <h3 id="modalTitle" class="text-xl font-semibold">Novo Lançamento</h3>
+        <button onclick="closeModal()" class="text-4xl">×</button>
+      </div>
+      <div id="modalContent" class="p-6"></div>
+    </div>
+  </div>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyACP-h5W8OkWgWnzY_MWhwWMMY4H71oJts",
+      authDomain: "orcamentodacasagoes.firebaseapp.com",
+      projectId: "orcamentodacasagoes",
+      storageBucket: "orcamentodacasagoes.firebasestorage.app",
+      messagingSenderId: "48902643054",
+      appId: "1:48902643054:web:d24d03316bca26e322357f"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+    
+    // Habilita persistência offline ilimitada para máxima segurança local
+    db.settings({ cacheSizeBytes: firebase.firestore.CACHE_SIZE_UNLIMITED });
+    db.enablePersistence().catch(() => console.log("Persistência ativa em aba única."));
+
+    let currentProfile = null;
+    let listaCustos = []; 
+    let pieChart = null;
+    let firebaseListener = null;
+
+    const profiles = [
+      { name: "Lucas Góes", id: "lucas" },
+      { name: "Ruan Góes", id: "ruan" },
+      { name: "Rosa Góes", id: "rosa" },
+      { name: "Marcos Góes", id: "marcos" }
+    ];
+
+    function renderProfiles() {
+      document.getElementById('profilesList').innerHTML = profiles.map(p => `
+        <button onclick="selectProfile('${p.id}', '${p.name}')" 
+                class="w-full bg-zinc-900 p-6 rounded-3xl text-left hover:bg-zinc-800 transition">
+          <p class="text-2xl font-semibold">${p.name}</p>
+        </button>
+      `).join('');
+    }
+
+    function selectProfile(id, name) {
+      currentProfile = id;
+      document.getElementById('profileScreen').classList.add('hidden');
+      
+      const mainApp = document.getElementById('mainApp');
+      mainApp.classList.remove('hidden');
+      mainApp.classList.remove('anim-slide-back');
+      void mainApp.offsetWidth; // Força reinício da animação (Padrão web)
+      mainApp.classList.add('anim-slide-in');
+      
+      document.getElementById('currentName').textContent = name;
+
+      if (firebaseListener) firebaseListener();
+
+      // Estratégia Cache-First em Tempo Real com monitoramento de metadados
+      firebaseListener = db.collection("aegis_dados")
+        .where("perfilId", "==", id)
+        .orderBy("criadoEm", "desc")
+        .onSnapshot({ includeMetadataChanges: true }, (snapshot) => {
+          listaCustos = [];
+          snapshot.forEach((doc) => {
+            const dados = doc.data();
+            listaCustos.push({
+              id: doc.id,
+              data: dados.data,
+              descricao: dados.descricao,
+              categoria: dados.categoria,
+              valor: dados.valor
+            });
+          });
+
+          // Renderiza instantaneamente com o que estiver disponível (local ou nuvem)
+          atualizarTudo();
+
+          const isLocal = snapshot.metadata.fromCache;
+          const hasPendingWrites = snapshot.metadata.hasPendingWrites;
+
+          if (hasPendingWrites) {
+            document.getElementById('status').textContent = "Salvando...";
+            document.getElementById('status').className = "text-xs px-3 py-1 bg-amber-900 text-amber-300 rounded-full";
+          } else {
+            document.getElementById('status').textContent = isLocal ? "Carregado (Local)" : "Online";
+            document.getElementById('status').className = isLocal 
+              ? "text-xs px-3 py-1 bg-zinc-800 text-zinc-400 rounded-full"
+              : "text-xs px-3 py-1 bg-emerald-900 text-emerald-300 rounded-full";
+          }
+        }, (error) => {
+          console.error("Erro ao sincronizar: ", error);
+          document.getElementById('status').textContent = "Erro de Conexão";
+          document.getElementById('status').className = "text-xs px-3 py-1 bg-red-900 text-red-300 rounded-full";
+        });
+    }
+
+    function switchProfile() {
+      // Para de consumir dados do banco de dados ao sair
+      if (firebaseListener) {
+        firebaseListener();
+        firebaseListener = null;
+      }
+      currentProfile = null;
+      
+      const mainApp = document.getElementById('mainApp');
+      const profileScreen = document.getElementById('profileScreen');
+      
+      mainApp.classList.add('hidden');
+      profileScreen.classList.remove('hidden');
+      profileScreen.classList.remove('anim-slide-in');
+      void profileScreen.offsetWidth; // Força reinício da animação
+      profileScreen.classList.add('anim-slide-back');
+    }
+
+    // ==================== CRUD REFEITO ====================
+    function novoCusto(editItem = null) {
+      const isEdit = !!editItem;
+      document.getElementById('modalTitle').textContent = isEdit ? "Editar Lançamento" : "Novo Lançamento";
+      const catAtual = editItem ? editItem.categoria : '';
+
+      document.getElementById('modalContent').innerHTML = `
+        <form onsubmit="processarForm(event, ${isEdit ? `'${editItem.id}'` : 'null'})" class="space-y-6">
+          <input type="date" id="data" value="${editItem ? editItem.data : new Date().toISOString().split('T')[0]}" class="w-full bg-zinc-800 rounded-2xl p-4 text-white" required>
+          <input type="text" id="descricao" value="${editItem ? editItem.descricao : ''}" placeholder="Descrição" class="w-full bg-zinc-800 rounded-2xl p-4 text-white" required>
+          <select id="categoria" class="w-full bg-zinc-800 rounded-2xl p-4 text-white">
+            <option value="Material de Construção" ${catAtual === 'Material de Construção' ? 'selected' : ''}>Material de Construção</option>
+            <option value="Mão de Obra" ${catAtual === 'Mão de Obra' ? 'selected' : ''}>Mão de Obra</option>
+            <option value="Outros" ${catAtual === 'Outros' ? 'selected' : ''}>Outros</option>
+          </select>
+          <input type="number" id="valor" value="${editItem ? editItem.valor : ''}" step="0.01" placeholder="Valor R$" class="w-full bg-zinc-800 rounded-2xl p-4 text-white" required>
+          <button type="submit" class="w-full py-6 ${isEdit ? 'bg-amber-600' : 'bg-emerald-600'} rounded-3xl font-bold transition active:scale-95">
+            ${isEdit ? 'SALVAR ALTERAÇÕES' : 'SALVAR LANÇAMENTO'}
+          </button>
+        </form>
+      `;
+      document.getElementById('modal').classList.remove('hidden');
+    }
+
+    async function processarForm(e, docId) {
+      e.preventDefault();
+      
+      const dadosItem = {
+        perfilId: currentProfile,
+        data: document.getElementById('data').value,
+        descricao: document.getElementById('descricao').value,
+        categoria: document.getElementById('categoria').value,
+        valor: parseFloat(document.getElementById('valor').value),
+        criadoEm: docId ? firebase.firestore.FieldValue.serverTimestamp() : Date.now()
+      };
+
+      try {
+        closeModal(); // Interface limpa e fecha na hora (ótima experiência para leigos)
+        if (docId) {
+          await db.collection("aegis_dados").doc(docId).update({
+            data: dadosItem.data,
+            descricao: dadosItem.descricao,
+            categoria: dadosItem.categoria,
+            valor: dadosItem.valor
+          });
+        } else {
+          await db.collection("aegis_dados").add(dadosItem);
+        }
+      } catch (err) {
+        alert("Erro ao salvar! O aplicativo tentará sincronizar em segundo plano.");
+        console.error(err);
+      }
+    }
+
+    async function deletarCusto(id) {
+      if (!confirm("Excluir este lançamento?")) return;
+      try {
+        await db.collection("aegis_dados").doc(id).delete();
+      } catch (err) {
+        alert("Erro ao deletar.");
+      }
+    }
+
+    function closeModal() {
+      document.getElementById('modal').classList.add('hidden');
+    }
+
+    function escapeHTMLJson(obj) {
+      return JSON.stringify(obj).replace(/"/g, '&quot;');
+    }
+
+    function atualizarTudo() {
+      // 1. Atualiza o Total
+      const total = listaCustos.reduce((sum, item) => sum + (item.valor || 0), 0);
+      document.getElementById('totalGasto').textContent = `R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+      // 2. Prepara dados do Gráfico
+      const porCat = {};
+      listaCustos.forEach(item => porCat[item.categoria] = (porCat[item.categoria] || 0) + item.valor);
+      const labels = Object.keys(porCat);
+      const dataValues = Object.values(porCat);
+
+      // 3. Atualização Inteligente do Gráfico (Sem recriações bruscas)
+      if (pieChart) {
+        pieChart.data.labels = labels;
+        pieChart.data.datasets[0].data = dataValues;
+        pieChart.update('none'); // Atualiza instantaneamente os valores na tela
+      } else if (labels.length > 0) {
+        pieChart = new Chart(document.getElementById('pieChart'), {
+          type: 'doughnut',
+          data: {
+            labels: labels,
+            datasets: [{ 
+              data: dataValues, 
+              backgroundColor: ['#0ea5e9','#eab308','#22c55e','#ef4444'],
+              borderWidth: 0
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { labels: { color: '#f4f4f5' } } }
+          }
+        });
+      }
+
+      // 4. Renderiza histórico (Máximo 15 itens recentes por desempenho)
+      document.getElementById('ultimos').innerHTML = listaCustos.slice(0, 15).map(item => `
+        <div class="bg-zinc-900 rounded-3xl p-5">
+          <div class="flex justify-between items-start">
+            <div class="flex-1 pr-2">
+              <p class="font-medium break-all">${item.descricao}</p>
+              <p class="text-xs text-zinc-500 mt-1">${item.data.split('-').reverse().join('/')} • ${item.categoria}</p>
+            </div>
+            <div class="text-right flex flex-col items-end">
+              <p class="font-bold text-red-400 text-lg">- R$ ${item.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+              <div class="flex gap-4 mt-3">
+                <button onclick="novoCusto(${escapeHTMLJson(item)})" class="text-amber-400 text-sm font-medium hover:underline">Editar</button>
+                <button onclick="deletarCusto('${item.id}')" class="text-red-500 text-sm font-medium hover:underline">Excluir</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    window.onload = renderProfiles;
+  </script>
+</body>
+</html>
