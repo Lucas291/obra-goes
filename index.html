@@ -70,6 +70,10 @@
 
       <h2 class="font-semibold mb-4">Últimos Lançamentos</h2>
       <div id="ultimos" class="space-y-4"></div>
+
+      <button id="btnVerTodos" onclick="abrirTodosOsCustos()" class="w-full py-4 bg-zinc-800 hover:bg-zinc-700 rounded-3xl font-bold mt-6 flex items-center justify-center gap-2 text-zinc-300 transition active:scale-95 hidden">
+        <i class="fas fa-list"></i> Ver Todos os Lançamentos
+      </button>
     </main>
   </div>
 
@@ -81,6 +85,19 @@
         <button onclick="closeModal()" class="text-4xl">×</button>
       </div>
       <div id="modalContent" class="p-6"></div>
+    </div>
+  </div>
+
+  <!-- MODAL TODOS OS LANÇAMENTOS -->
+  <div id="modalTodos" class="fixed inset-0 bg-black/80 hidden items-end z-50">
+    <div class="bg-zinc-900 w-full h-[90vh] rounded-t-3xl bottom-sheet max-w-4xl mx-auto flex flex-col">
+      <div class="p-5 border-b border-zinc-800 flex justify-between items-center">
+        <h3 class="text-xl font-semibold">Todos os Lançamentos</h3>
+        <button onclick="fecharTodosOsCustos()" class="text-4xl leading-none text-zinc-400">&times;</button>
+      </div>
+      <div class="p-5 overflow-y-auto flex-1 space-y-4" id="listaTodosCustos">
+        <!-- Renderizado via JS -->
+      </div>
     </div>
   </div>
 
@@ -107,10 +124,7 @@
     let firebaseListener = null;
 
     const profiles = [
-      { name: "Lucas Góes", id: "lucas" },
-      { name: "Ruan Góes", id: "ruan" },
-      { name: "Rosa Góes", id: "rosa" },
-      { name: "Marcos Góes", id: "marcos" }
+      { name: "Família Góes", id: "lucas" }
     ];
 
     function renderProfiles() {
@@ -138,20 +152,34 @@
 
       // Estratégia Cache-First em Tempo Real com monitoramento de metadados
       firebaseListener = db.collection("aegis_dados")
-        .where("perfilId", "==", id)
-        .orderBy("criadoEm", "desc")
         .onSnapshot({ includeMetadataChanges: true }, (snapshot) => {
           listaCustos = [];
           snapshot.forEach((doc) => {
             const dados = doc.data();
-            listaCustos.push({
-              id: doc.id,
-              data: dados.data,
-              descricao: dados.descricao,
-              categoria: dados.categoria,
-              valor: dados.valor
-            });
+            
+            // Garante que pega dados do Firebase Console, mesmo que falte alguns parâmetros padrão
+            if (dados.perfilId === id || !dados.perfilId) {
+              let time = 0;
+              if (dados.criadoEm) {
+                if (typeof dados.criadoEm.toMillis === 'function') time = dados.criadoEm.toMillis();
+                else if (typeof dados.criadoEm === 'number') time = dados.criadoEm;
+                else time = new Date(dados.criadoEm).getTime() || 0;
+              } else if (dados.data) {
+                time = new Date(dados.data).getTime() || 0;
+              }
+
+              listaCustos.push({
+                id: doc.id,
+                data: dados.data || '',
+                descricao: dados.descricao || 'Sem descrição',
+                categoria: dados.categoria || 'Outros',
+                valor: Number(dados.valor) || 0,
+                criadoEm: time
+              });
+            }
           });
+          
+          listaCustos.sort((a, b) => b.criadoEm - a.criadoEm); // Ordena os mais recentes no topo
 
           // Renderiza instantaneamente com o que estiver disponível (local ou nuvem)
           atualizarTudo();
@@ -264,6 +292,65 @@
       return JSON.stringify(obj).replace(/"/g, '&quot;');
     }
 
+    function abrirTodosOsCustos() {
+      document.getElementById('modalTodos').classList.remove('hidden');
+      document.getElementById('modalTodos').classList.add('flex');
+      renderTodosOsCustos();
+    }
+
+    function fecharTodosOsCustos() {
+      document.getElementById('modalTodos').classList.add('hidden');
+      document.getElementById('modalTodos').classList.remove('flex');
+    }
+
+    function renderTodosOsCustos() {
+      if (listaCustos.length === 0) {
+        document.getElementById('listaTodosCustos').innerHTML = '<p class="text-center text-zinc-400 py-8">Nenhum lançamento encontrado.</p>';
+        return;
+      }
+
+      const tableHtml = `
+        <div class="overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-900/50 shadow-xl">
+          <table class="w-full text-left border-collapse min-w-[600px]">
+            <thead>
+              <tr class="bg-zinc-800 text-zinc-300 text-xs uppercase tracking-wider">
+                <th class="p-4 font-bold border-b border-zinc-700">Data</th>
+                <th class="p-4 font-bold border-b border-zinc-700">Descrição</th>
+                <th class="p-4 font-bold border-b border-zinc-700">Categoria</th>
+                <th class="p-4 font-bold border-b border-zinc-700 text-right">Valor</th>
+                <th class="p-4 font-bold border-b border-zinc-700 text-center">Ações</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-zinc-800/60">
+              ${listaCustos.map(item => `
+                <tr class="hover:bg-zinc-800/40 transition-colors">
+                  <td class="p-4 whitespace-nowrap text-zinc-400 font-medium">${item.data.split('-').reverse().join('/')}</td>
+                  <td class="p-4 text-zinc-100 font-medium min-w-[200px]">${item.descricao}</td>
+                  <td class="p-4">
+                    <span class="px-3 py-1 bg-zinc-800 text-zinc-300 rounded-full text-xs font-semibold">${item.categoria}</span>
+                  </td>
+                  <td class="p-4 text-right text-red-400 font-bold whitespace-nowrap">
+                    - R$ ${item.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </td>
+                  <td class="p-4 whitespace-nowrap text-center">
+                    <div class="flex gap-2 justify-center">
+                      <button onclick="fecharTodosOsCustos(); novoCusto(${escapeHTMLJson(item)})" class="w-9 h-9 rounded-full bg-zinc-800 text-amber-400 flex items-center justify-center hover:bg-amber-400 hover:text-zinc-900 transition-all shadow-sm" title="Editar">
+                        <i class="fas fa-edit"></i>
+                      </button>
+                      <button onclick="deletarCusto('${item.id}')" class="w-9 h-9 rounded-full bg-zinc-800 text-red-500 flex items-center justify-center hover:bg-red-500 hover:text-white transition-all shadow-sm" title="Excluir">
+                        <i class="fas fa-trash"></i>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+      document.getElementById('listaTodosCustos').innerHTML = tableHtml;
+    }
+
     function atualizarTudo() {
       // 1. Atualiza o Total
       const total = listaCustos.reduce((sum, item) => sum + (item.valor || 0), 0);
@@ -317,6 +404,22 @@
           </div>
         </div>
       `).join('');
+
+      // 5. Exibe botão de Ver Todos apenas se houver mais que 15 itens
+      const btnVerTodos = document.getElementById('btnVerTodos');
+      if (btnVerTodos) {
+        if (listaCustos.length > 15) {
+          btnVerTodos.classList.remove('hidden');
+        } else {
+          btnVerTodos.classList.add('hidden');
+        }
+      }
+
+      // 6. Atualiza a tela de todos os custos caso ela esteja aberta
+      const modalTodos = document.getElementById('modalTodos');
+      if (modalTodos && !modalTodos.classList.contains('hidden')) {
+        renderTodosOsCustos();
+      }
     }
 
     window.onload = renderProfiles;
