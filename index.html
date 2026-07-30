@@ -6,9 +6,17 @@
   <title>Consultor de Custos - Construção - Família Góes</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
+  
+  <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+  
+  <!-- Chart.js para Gráficos -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  
+  <!-- HTML2Canvas para gerar a Imagem do Relatório -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
   <style>
     body { font-family: 'Inter', system-ui, sans-serif; }
     .bottom-sheet { animation: slideUp 0.4s cubic-bezier(0.32, 0.72, 0, 1) forwards; }
@@ -64,30 +72,38 @@
         <canvas id="pieChart"></canvas>
       </div>
 
-      <button onclick="novoCusto()" class="w-full py-5 bg-blue-600 rounded-3xl font-bold mb-8 flex items-center justify-center gap-2 text-lg transition active:scale-95">
+      <button onclick="novoCusto()" class="w-full py-5 bg-blue-600 rounded-3xl font-bold mb-6 flex items-center justify-center gap-2 text-lg transition active:scale-95">
         <i class="fas fa-plus"></i> Novo Lançamento
       </button>
+
+      <!-- BOTÕES DE COMPARTILHAMENTO E EXPORTAÇÃO -->
+      <div class="grid grid-cols-1 gap-3 mb-10">
+        <!-- Botão Principal: Imagem -->
+        <button onclick="exportarImagem()" id="btnImagem" class="w-full py-4 bg-indigo-600 hover:bg-indigo-500 rounded-3xl font-bold flex items-center justify-center gap-2 text-white transition active:scale-95 shadow-lg">
+          <i class="fas fa-image text-xl"></i> Gerar Imagem do Relatório
+        </button>
+        
+        <!-- Botões Secundários: Planilha e Texto -->
+        <div class="grid grid-cols-2 gap-3">
+          <button onclick="exportarCSV()" class="w-full py-4 bg-emerald-700 hover:bg-emerald-600 rounded-3xl font-bold flex items-center justify-center gap-2 text-white transition active:scale-95 shadow-lg">
+            <i class="fas fa-file-excel"></i> Planilha
+          </button>
+          <button onclick="compartilharResumo()" class="w-full py-4 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-3xl font-bold flex items-center justify-center gap-2 text-white transition active:scale-95 shadow-lg">
+            <i class="fas fa-share-alt"></i> Texto
+          </button>
+        </div>
+      </div>
 
       <h2 class="font-semibold mb-4">Últimos Lançamentos</h2>
       <div id="ultimos" class="space-y-4"></div>
 
-      <button id="btnVerTodos" onclick="abrirTodosOsCustos()" class="w-full py-4 bg-zinc-800 hover:bg-zinc-700 rounded-3xl font-bold mt-6 flex items-center justify-center gap-2 text-zinc-300 transition active:scale-95 hidden">
+      <button id="btnVerTodos" onclick="abrirTodosOsCustos()" class="w-full py-4 bg-zinc-800 hover:bg-zinc-700 rounded-3xl font-bold mt-6 mb-10 flex items-center justify-center gap-2 text-zinc-300 transition active:scale-95 hidden">
         <i class="fas fa-list"></i> Ver Todos os Lançamentos
       </button>
-
-      <!-- Novos botões de Compartilhamento -->
-      <div class="flex gap-4 mt-4 mb-8">
-        <button onclick="exportarCSV()" class="w-full py-4 bg-emerald-700 hover:bg-emerald-600 rounded-3xl font-bold flex items-center justify-center gap-2 text-white transition active:scale-95 shadow-lg">
-          <i class="fas fa-file-excel"></i> Planilha
-        </button>
-        <button onclick="compartilharResumo()" class="w-full py-4 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-3xl font-bold flex items-center justify-center gap-2 text-white transition active:scale-95 shadow-lg">
-          <i class="fas fa-share-alt"></i> Resumo
-        </button>
-      </div>
     </main>
   </div>
 
-  <!-- MODAL -->
+  <!-- MODAL DE NOVO/EDITAR -->
   <div id="modal" class="fixed inset-0 bg-black/80 hidden flex items-end z-50">
     <div class="bg-zinc-900 w-full rounded-t-3xl bottom-sheet max-w-lg mx-auto">
       <div class="p-5 border-b border-zinc-800 flex justify-between">
@@ -111,6 +127,40 @@
     </div>
   </div>
 
+  <!-- GABARITO INVISÍVEL PARA GERAR O RELATÓRIO EM IMAGEM -->
+  <!-- Este layout só existe para ser capturado pela foto e baixado -->
+  <div id="relatorioExport" class="fixed -left-[9999px] top-0 w-[700px] bg-zinc-950 p-10 flex flex-col gap-8 text-zinc-100 z-[-1] shadow-2xl">
+    <div class="flex justify-between items-center border-b border-zinc-800 pb-6">
+      <div>
+        <h1 class="text-4xl font-bold">Relatório Financeiro da Obra</h1>
+        <p class="text-2xl text-emerald-400 mt-2 font-medium">Família Góes</p>
+      </div>
+      <div class="text-right">
+        <p class="text-zinc-400 text-lg uppercase tracking-wider">Total Investido</p>
+        <p id="relTotal" class="text-5xl font-bold text-red-400 mt-1">R$ 0</p>
+      </div>
+    </div>
+
+    <div class="flex gap-8 items-center bg-zinc-900 rounded-3xl p-8 border border-zinc-800">
+      <div class="w-1/2">
+        <img id="relChartImg" class="w-full h-auto max-h-64 object-contain" />
+      </div>
+      <div class="w-1/2" id="relChartLegenda">
+        <!-- Legendas geradas via JS -->
+      </div>
+    </div>
+
+    <div>
+      <h2 class="text-2xl font-bold mb-4 text-zinc-300">Maiores Despesas (Top 10)</h2>
+      <div id="relLista" class="space-y-3">
+        <!-- Lista gerada via JS -->
+      </div>
+    </div>
+    <div class="text-center text-zinc-600 pt-6 mt-4 border-t border-zinc-800 text-sm">
+      Gerado automaticamente pelo aplicativo de Custos da Família Góes
+    </div>
+  </div>
+
   <script>
     const firebaseConfig = {
       apiKey: "AIzaSyACP-h5W8OkWgWnzY_MWhwWMMY4H71oJts",
@@ -124,7 +174,6 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
     
-    // Habilita persistência offline ilimitada para máxima segurança local
     db.settings({ cacheSizeBytes: firebase.firestore.CACHE_SIZE_UNLIMITED });
     db.enablePersistence().catch(() => console.log("Persistência ativa em aba única."));
 
@@ -153,21 +202,19 @@
       const mainApp = document.getElementById('mainApp');
       mainApp.classList.remove('hidden');
       mainApp.classList.remove('anim-slide-back');
-      void mainApp.offsetWidth; // Força reinício da animação (Padrão web)
+      void mainApp.offsetWidth; 
       mainApp.classList.add('anim-slide-in');
       
       document.getElementById('currentName').textContent = name;
 
       if (firebaseListener) firebaseListener();
 
-      // Estratégia Cache-First em Tempo Real com monitoramento de metadados
       firebaseListener = db.collection("aegis_dados")
         .onSnapshot({ includeMetadataChanges: true }, (snapshot) => {
           listaCustos = [];
           snapshot.forEach((doc) => {
             const dados = doc.data();
             
-            // Garante que pega dados do Firebase Console, mesmo que falte alguns parâmetros padrão
             if (dados.perfilId === id || !dados.perfilId) {
               let time = 0;
               if (dados.criadoEm) {
@@ -189,9 +236,8 @@
             }
           });
           
-          listaCustos.sort((a, b) => b.criadoEm - a.criadoEm); // Ordena os mais recentes no topo
+          listaCustos.sort((a, b) => b.criadoEm - a.criadoEm); 
 
-          // Renderiza instantaneamente com o que estiver disponível (local ou nuvem)
           atualizarTudo();
 
           const isLocal = snapshot.metadata.fromCache;
@@ -214,7 +260,6 @@
     }
 
     function switchProfile() {
-      // Para de consumir dados do banco de dados ao sair
       if (firebaseListener) {
         firebaseListener();
         firebaseListener = null;
@@ -227,11 +272,10 @@
       mainApp.classList.add('hidden');
       profileScreen.classList.remove('hidden');
       profileScreen.classList.remove('anim-slide-in');
-      void profileScreen.offsetWidth; // Força reinício da animação
+      void profileScreen.offsetWidth;
       profileScreen.classList.add('anim-slide-back');
     }
 
-    // ==================== CRUD REFEITO ====================
     function novoCusto(editItem = null) {
       const isEdit = !!editItem;
       document.getElementById('modalTitle').textContent = isEdit ? "Editar Lançamento" : "Novo Lançamento";
@@ -268,7 +312,7 @@
       };
 
       try {
-        closeModal(); // Interface limpa e fecha na hora (ótima experiência para leigos)
+        closeModal(); 
         if (docId) {
           await db.collection("aegis_dados").doc(docId).update({
             data: dadosItem.data,
@@ -372,11 +416,11 @@
       const labels = Object.keys(porCat);
       const dataValues = Object.values(porCat);
 
-      // 3. Atualização Inteligente do Gráfico (Sem recriações bruscas)
+      // 3. Atualização Inteligente do Gráfico
       if (pieChart) {
         pieChart.data.labels = labels;
         pieChart.data.datasets[0].data = dataValues;
-        pieChart.update('none'); // Atualiza instantaneamente os valores na tela
+        pieChart.update('none'); 
       } else if (labels.length > 0) {
         pieChart = new Chart(document.getElementById('pieChart'), {
           type: 'doughnut',
@@ -391,6 +435,7 @@
           options: {
             responsive: true,
             maintainAspectRatio: false,
+            animation: false, // Desligado para facilitar a captura perfeita em imagem
             plugins: { legend: { labels: { color: '#f4f4f5' } } }
           }
         });
@@ -415,7 +460,7 @@
         </div>
       `).join('');
 
-      // 5. Exibe botão de Ver Todos apenas se houver mais que 15 itens
+      // 5. Exibe botão de Ver Todos
       const btnVerTodos = document.getElementById('btnVerTodos');
       if (btnVerTodos) {
         if (listaCustos.length > 15) {
@@ -425,7 +470,6 @@
         }
       }
 
-      // 6. Atualiza a tela de todos os custos caso ela esteja aberta
       const modalTodos = document.getElementById('modalTodos');
       if (modalTodos && !modalTodos.classList.contains('hidden')) {
         renderTodosOsCustos();
@@ -434,27 +478,18 @@
 
     // ==================== COMPARTILHAMENTO E EXPORTAÇÃO ====================
 
-    // Função para exportar os dados para Planilha (CSV)
     function exportarCSV() {
       if (listaCustos.length === 0) {
         alert("Não há dados para exportar.");
         return;
       }
-
-      // Adiciona o BOM (\uFEFF) para o Excel reconhecer os acentos corretamente (UTF-8)
       let csv = "\uFEFFData;Descrição;Categoria;Valor\n";
-
       listaCustos.forEach(item => {
         const dataFormatada = item.data.split('-').reverse().join('/');
-        // Troca ponto e vírgula da descrição por vírgula normal para não quebrar a planilha
         const desc = item.descricao.replace(/;/g, ',');
-        // Troca ponto por vírgula no valor para o formato brasileiro
         const valorBR = item.valor.toFixed(2).replace('.', ',');
-        
         csv += `${dataFormatada};${desc};${item.categoria};${valorBR}\n`;
       });
-
-      // Cria um link temporário para forçar o download
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -465,17 +500,14 @@
       document.body.removeChild(link);
     }
 
-    // Função para compartilhar um resumo via WhatsApp/Redes Sociais
     async function compartilharResumo() {
       if (listaCustos.length === 0) {
         alert("Não há dados para compartilhar.");
         return;
       }
-
       const total = listaCustos.reduce((sum, item) => sum + (item.valor || 0), 0);
       const totalFormatado = total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
-      // Monta um texto bem formatado com emojis para o WhatsApp
       let texto = `🏗️ *Resumo da Obra - Família Góes*\n\n`;
       texto += `💰 *TOTAL INVESTIDO: ${totalFormatado}*\n\n`;
       texto += `*Últimos 5 lançamentos:*\n`;
@@ -486,20 +518,100 @@
         texto += `🔸 ${dataFormatada} - ${item.descricao}: R$ ${valorBR}\n`;
       });
 
-      // Tenta usar o compartilhamento nativo do celular (Web Share API)
       if (navigator.share) {
         try {
-          await navigator.share({
-            title: 'Resumo de Custos da Obra',
-            text: texto
-          });
+          await navigator.share({ title: 'Resumo de Custos', text: texto });
         } catch (err) {
-          console.log("Compartilhamento cancelado ou falhou", err);
+          console.log("Compartilhamento cancelado.", err);
         }
       } else {
-        // Se estiver no PC e não tiver menu de compartilhar, copia para a área de transferência
         navigator.clipboard.writeText(texto);
-        alert("Resumo copiado para a área de transferência! É só colar no WhatsApp ou onde preferir.");
+        alert("Resumo copiado para a área de transferência!");
+      }
+    }
+
+    // ==================== EXPORTAR IMAGEM (RELATÓRIO VISUAL) ====================
+    async function exportarImagem() {
+      if (listaCustos.length === 0) {
+        alert("Não há dados para gerar a imagem.");
+        return;
+      }
+
+      const btn = document.getElementById('btnImagem');
+      const textOriginal = btn.innerHTML;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin text-xl"></i> Processando Imagem...';
+      btn.disabled = true;
+
+      try {
+        // 1. Atualiza o Total no gabarito
+        const total = listaCustos.reduce((sum, item) => sum + (item.valor || 0), 0);
+        document.getElementById('relTotal').textContent = `R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+        // 2. Extrai a Imagem do Gráfico atual
+        if (pieChart) {
+          document.getElementById('relChartImg').src = pieChart.toBase64Image();
+        }
+
+        // 3. Monta a Legenda lateral para o gráfico com porcentagens
+        const porCat = {};
+        listaCustos.forEach(item => porCat[item.categoria] = (porCat[item.categoria] || 0) + item.valor);
+        
+        const legendasHtml = Object.keys(porCat).map((cat, index) => {
+          // Usa as mesmas cores definidas no array do chartJS
+          const cores = ['#0ea5e9','#eab308','#22c55e','#ef4444'];
+          const corCat = cores[index % cores.length];
+          const porcentagem = ((porCat[cat] / total) * 100).toFixed(1);
+          const valorBR = porCat[cat].toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+          
+          return `
+            <div class="flex items-center justify-between mb-4">
+              <div class="flex items-center gap-3">
+                <span class="w-5 h-5 rounded-full" style="background-color: ${corCat}"></span>
+                <span class="text-xl font-medium text-zinc-300">${cat} (${porcentagem}%)</span>
+              </div>
+              <span class="font-bold text-xl text-white">R$ ${valorBR}</span>
+            </div>
+          `;
+        }).join('');
+        document.getElementById('relChartLegenda').innerHTML = legendasHtml;
+
+        // 4. Pega as 10 maiores despesas da obra para listar
+        const maioresDespesas = [...listaCustos].sort((a, b) => b.valor - a.valor).slice(0, 10);
+        const listaHtml = maioresDespesas.map(item => `
+          <div class="flex justify-between items-center bg-zinc-800/40 p-4 rounded-2xl">
+            <div>
+              <p class="font-bold text-lg text-white">${item.descricao}</p>
+              <p class="text-zinc-400">${item.data.split('-').reverse().join('/')} • ${item.categoria}</p>
+            </div>
+            <p class="font-bold text-red-400 text-xl">- R$ ${item.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+          </div>
+        `).join('');
+        document.getElementById('relLista').innerHTML = listaHtml;
+
+        // 5. Usa o html2canvas para tirar a foto do Gabarito Invisível
+        const elementoAlvo = document.getElementById('relatorioExport');
+        const canvas = await html2canvas(elementoAlvo, {
+          backgroundColor: '#09090b', // Fundo escuro do app
+          scale: 2, // Garante alta resolução na foto
+          logging: false
+        });
+
+        // 6. Faz o download da Imagem
+        const urlFoto = canvas.toDataURL('image/png');
+        const link = document.createElement("a");
+        link.setAttribute("href", urlFoto);
+        link.setAttribute("download", "Relatorio_Obra_Familia_Goes.png");
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+      } catch (error) {
+        console.error("Erro ao gerar imagem:", error);
+        alert("Ocorreu um erro ao gerar a imagem. Tente novamente.");
+      } finally {
+        // Restaura o botão
+        btn.innerHTML = textOriginal;
+        btn.disabled = false;
       }
     }
 
