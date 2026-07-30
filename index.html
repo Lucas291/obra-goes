@@ -74,15 +74,25 @@
       <button id="btnVerTodos" onclick="abrirTodosOsCustos()" class="w-full py-4 bg-zinc-800 hover:bg-zinc-700 rounded-3xl font-bold mt-6 flex items-center justify-center gap-2 text-zinc-300 transition active:scale-95 hidden">
         <i class="fas fa-list"></i> Ver Todos os Lançamentos
       </button>
+
+      <!-- Novos botões de Compartilhamento -->
+      <div class="flex gap-4 mt-4 mb-8">
+        <button onclick="exportarCSV()" class="w-full py-4 bg-emerald-700 hover:bg-emerald-600 rounded-3xl font-bold flex items-center justify-center gap-2 text-white transition active:scale-95 shadow-lg">
+          <i class="fas fa-file-excel"></i> Planilha
+        </button>
+        <button onclick="compartilharResumo()" class="w-full py-4 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-3xl font-bold flex items-center justify-center gap-2 text-white transition active:scale-95 shadow-lg">
+          <i class="fas fa-share-alt"></i> Resumo
+        </button>
+      </div>
     </main>
   </div>
 
   <!-- MODAL -->
   <div id="modal" class="fixed inset-0 bg-black/80 hidden flex items-end z-50">
     <div class="bg-zinc-900 w-full rounded-t-3xl bottom-sheet max-w-lg mx-auto">
-      <div class="p-5 border-b flex justify-between">
+      <div class="p-5 border-b border-zinc-800 flex justify-between">
         <h3 id="modalTitle" class="text-xl font-semibold">Novo Lançamento</h3>
-        <button onclick="closeModal()" class="text-4xl">×</button>
+        <button onclick="closeModal()" class="text-4xl text-zinc-400 hover:text-white">&times;</button>
       </div>
       <div id="modalContent" class="p-6"></div>
     </div>
@@ -93,7 +103,7 @@
     <div class="bg-zinc-900 w-full h-[90vh] rounded-t-3xl bottom-sheet max-w-4xl mx-auto flex flex-col">
       <div class="p-5 border-b border-zinc-800 flex justify-between items-center">
         <h3 class="text-xl font-semibold">Todos os Lançamentos</h3>
-        <button onclick="fecharTodosOsCustos()" class="text-4xl leading-none text-zinc-400">&times;</button>
+        <button onclick="fecharTodosOsCustos()" class="text-4xl leading-none text-zinc-400 hover:text-white">&times;</button>
       </div>
       <div class="p-5 overflow-y-auto flex-1 space-y-4" id="listaTodosCustos">
         <!-- Renderizado via JS -->
@@ -237,7 +247,7 @@
             <option value="Outros" ${catAtual === 'Outros' ? 'selected' : ''}>Outros</option>
           </select>
           <input type="number" id="valor" value="${editItem ? editItem.valor : ''}" step="0.01" placeholder="Valor R$" class="w-full bg-zinc-800 rounded-2xl p-4 text-white" required>
-          <button type="submit" class="w-full py-6 ${isEdit ? 'bg-amber-600' : 'bg-emerald-600'} rounded-3xl font-bold transition active:scale-95">
+          <button type="submit" class="w-full py-6 ${isEdit ? 'bg-amber-600' : 'bg-emerald-600'} rounded-3xl font-bold transition active:scale-95 text-white">
             ${isEdit ? 'SALVAR ALTERAÇÕES' : 'SALVAR LANÇAMENTO'}
           </button>
         </form>
@@ -419,6 +429,77 @@
       const modalTodos = document.getElementById('modalTodos');
       if (modalTodos && !modalTodos.classList.contains('hidden')) {
         renderTodosOsCustos();
+      }
+    }
+
+    // ==================== COMPARTILHAMENTO E EXPORTAÇÃO ====================
+
+    // Função para exportar os dados para Planilha (CSV)
+    function exportarCSV() {
+      if (listaCustos.length === 0) {
+        alert("Não há dados para exportar.");
+        return;
+      }
+
+      // Adiciona o BOM (\uFEFF) para o Excel reconhecer os acentos corretamente (UTF-8)
+      let csv = "\uFEFFData;Descrição;Categoria;Valor\n";
+
+      listaCustos.forEach(item => {
+        const dataFormatada = item.data.split('-').reverse().join('/');
+        // Troca ponto e vírgula da descrição por vírgula normal para não quebrar a planilha
+        const desc = item.descricao.replace(/;/g, ',');
+        // Troca ponto por vírgula no valor para o formato brasileiro
+        const valorBR = item.valor.toFixed(2).replace('.', ',');
+        
+        csv += `${dataFormatada};${desc};${item.categoria};${valorBR}\n`;
+      });
+
+      // Cria um link temporário para forçar o download
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", "Custos_Construcao_Família_Goes.csv");
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    // Função para compartilhar um resumo via WhatsApp/Redes Sociais
+    async function compartilharResumo() {
+      if (listaCustos.length === 0) {
+        alert("Não há dados para compartilhar.");
+        return;
+      }
+
+      const total = listaCustos.reduce((sum, item) => sum + (item.valor || 0), 0);
+      const totalFormatado = total.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+      // Monta um texto bem formatado com emojis para o WhatsApp
+      let texto = `🏗️ *Resumo da Obra - Família Góes*\n\n`;
+      texto += `💰 *TOTAL INVESTIDO: ${totalFormatado}*\n\n`;
+      texto += `*Últimos 5 lançamentos:*\n`;
+
+      listaCustos.slice(0, 5).forEach(item => {
+        const dataFormatada = item.data.split('-').reverse().join('/');
+        const valorBR = item.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+        texto += `🔸 ${dataFormatada} - ${item.descricao}: R$ ${valorBR}\n`;
+      });
+
+      // Tenta usar o compartilhamento nativo do celular (Web Share API)
+      if (navigator.share) {
+        try {
+          await navigator.share({
+            title: 'Resumo de Custos da Obra',
+            text: texto
+          });
+        } catch (err) {
+          console.log("Compartilhamento cancelado ou falhou", err);
+        }
+      } else {
+        // Se estiver no PC e não tiver menu de compartilhar, copia para a área de transferência
+        navigator.clipboard.writeText(texto);
+        alert("Resumo copiado para a área de transferência! É só colar no WhatsApp ou onde preferir.");
       }
     }
 
